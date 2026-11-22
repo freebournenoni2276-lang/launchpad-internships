@@ -12,7 +12,12 @@ function toggle(values:string[],value:string) {
   return values.includes(value)?values.filter(item=>item!==value):[...values,value]
 }
 function Choices({label,options,values,onChange}:{label:string;options:readonly string[];values:string[];onChange:(values:string[])=>void}) {
-  return <details className="multi"><summary>{label}{values.length>0&&<span>{values.length}</span>}</summary>
+  return <details className="multi" name="launchpad-filters" onKeyDown={event=>{
+    if(event.key==='Escape'&&event.currentTarget.open){
+      event.currentTarget.open=false
+      event.currentTarget.querySelector('summary')?.focus()
+    }
+  }}><summary>{label}{values.length>0&&<span>{values.length}</span>}</summary>
     <div className="choices" role="group" aria-label={label}>{options.map(value=><label key={value}>
       <input type="checkbox" checked={values.includes(value)} onChange={()=>onChange(toggle(values,value))}/>{value}
     </label>)}</div>
