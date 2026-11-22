@@ -1,6 +1,7 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { AuthOverlay, signOut, useAuth, useMutations, useQuery } from 'deepspace'
 import { ArrowUpRight, Bookmark, Compass, Search, UserRound } from 'lucide-react'
+import { matchesLocation, postingKey } from '../../job-search'
 import { CalendarReminder, FitSummary, WebSearch } from '../../components/LaunchpadIntegrations'
 import { defaultProfile, profileSkills, readListing, readPreviousTracker, safeUrl, sampleJobs, skills, sponsorships, statuses, years, type Application, type Job, type Profile } from '../../opportunities'
 import '../../launchpad.css'
@@ -69,6 +70,7 @@ function JobCard({job,profile,authenticated,children}:{job:Job;profile:Profile;a
     <div className="card-top"><span className="monogram" aria-hidden="true">{job.company.slice(0,2).toUpperCase()}</span><span className="source">{job.source}</span></div>
     <div><p className="company">{job.company}</p><h3>{job.title}</h3><p className="location">{job.location}</p></div>
     <div className="tags"><span>{job.level}</span><span className={job.sponsorship==='Available'?'available':''}>Sponsorship · {job.sponsorship.toLowerCase()}</span>{job.classifications.map(year=><span key={year}>{year}</span>)}</div>
+    {job.source==='Web search'&&<div className="web-summary"><p>{job.summary || 'See the employer’s posting for responsibilities and qualifications.'}</p>{href&&<small>Source · {new URL(href).hostname.replace(/^www\./, '')} · Confirm details with the employer.</small>}</div>}
     {job.sponsorshipNote&&<small className="muted">{job.sponsorshipNote}</small>}
     <div className="fit">
       <strong>{selected.length?`${matching.length} matching skill${matching.length===1?'':'s'}`:'Skills mentioned'}</strong>
@@ -107,14 +109,19 @@ export default function Launchpad() {
   const profileRecord=isSignedIn?profiles.records[0]:undefined
   const profile=profileRecord?.data||defaultProfile
   const saved=isSignedIn?applications.records:[]
-  const listings=[...web,...sampleJobs.filter(sample=>!web.some(job=>job.key===sample.key))]
+  const webKeys=new Set(web.map(job=>postingKey(job.url)))
+  const listings=[...web,...sampleJobs.filter(sample=>!webKeys.has(postingKey(sample.url)))]
+  const preferences={skills:selected,matchAll:mode==='All selected skills',levels,
+    locations:locations.length?locations:profile.location!=='Any'&&profile.location.trim()?[profile.location.trim()]:[],
+    sponsorship:sponsors.length?sponsors:profile.sponsorship==='Need sponsorship'?['Available']:[],
+  }
   const locationOptions=['Remote',...new Set([...locations,...listings.map(job=>job.location)].filter(value=>value!=='Remote'&&value!=='See posting'))].sort()
   const importable=previous.filter(entry=>!saved.some(record=>record.data.jobKey===entry.jobKey))
   const normalized=query.trim().toLowerCase()
   const active=Boolean(normalized||levels.length||locations.length||sponsors.length||classes.length||selected.length)
   const shown=listings.filter(job=>
     (!normalized||[job.title,job.company,job.location,...job.skills].join(' ').toLowerCase().includes(normalized)) &&
-    (!levels.length||levels.includes(job.level)) && (!locations.length||locations.includes(job.location)||(locations.includes('Remote')&&/\bremote\b/i.test(job.location))) &&
+    (!levels.length||levels.includes(job.level)) && (!locations.length||locations.some(value=>matchesLocation(job.location,value))) &&
     (!sponsors.length||sponsors.includes(job.sponsorship)) &&
     (!classes.length||(job.classifications.length?job.classifications.some(year=>classes.includes(year)):classes.includes('None'))) &&
     (!selected.length||(mode==='All selected skills'?selected.every(skill=>job.skills.includes(skill)):selected.some(skill=>job.skills.includes(skill))))
@@ -170,7 +177,7 @@ export default function Launchpad() {
           {!isSignedIn&&<button className="primary" onClick={()=>setLogin(true)}>Sign in to build your profile <ArrowUpRight size={16}/></button>}
         </div><div className="art" aria-hidden="true"><i/><i/><i/><span>✳</span><b>✦</b></div></section>
         <section aria-labelledby="explore-title"><div className="section-head"><div><h2 id="explore-title">Explore opportunities</h2><p>Browse sample listings or search the web for more roles. Confirm details with the employer.</p></div>{isSignedIn&&<button className="quiet" onClick={()=>visit('Profile')}>Edit my profile ↗</button>}</div>
-          {isSignedIn&&<WebSearch onResults={setWeb}/>}
+          {isSignedIn&&<WebSearch onResults={setWeb} preferences={preferences}/>}
           <div className="filters">
             <label className="search"><Search size={18}/><input type="search" aria-label="Search displayed listings" placeholder="Search roles, employers, or locations" value={query} onChange={e=>setQuery(e.target.value)}/></label>
             <Choices label="Experience level" options={levelOptions} values={levels} onChange={setLevels}/>
@@ -185,7 +192,7 @@ export default function Launchpad() {
           </div></div>
           {error&&<p role="alert" className="error">{error}</p>}
           {shown.length?<div className="cards">{shown.map(job=>{
-            const exists=saved.some(record=>record.data.jobKey===job.key)
+            const exists=saved.some(record=>record.data.jobKey===job.key||postingKey(record.data.jobKey)===postingKey(job.url))
             const busy=pending.includes(job.key)
             return <JobCard key={job.key} job={job} profile={profile} authenticated={isSignedIn}>
               <button className="save" aria-label={`${exists?'Saved':'Save'} ${job.title}`} disabled={busy||(isSignedIn&&!applicationWrites.ready)||exists} onClick={()=>save(job)}><Bookmark size={16} fill={exists?'currentColor':'none'}/>{busy?'Saving…':exists?'Saved':'Save'}</button>

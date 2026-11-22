@@ -1,13 +1,14 @@
 import { useState, type FormEvent } from 'react'
 import { integration } from 'deepspace'
-import { normalizeSearch, safeUrl, type Job, type SearchHit } from '../opportunities'
+import { safeUrl, type Job } from '../opportunities'
+import { buildJobSearch, normalizeSearch, type SearchHit, type SearchPreferences } from '../job-search'
 
 type Phase = 'idle'|'loading'|'success'|'empty'|'error'
 function message(result:{error?:string;message?:string}) {
   return (result.message || result.error || 'The service could not complete this request.').slice(0,240)
 }
 
-export function WebSearch({onResults}:{onResults:(jobs:Job[])=>void}) {
+export function WebSearch({onResults, preferences}:{onResults:(jobs:Job[])=>void;preferences:SearchPreferences}) {
   const [query,setQuery]=useState('')
   const [phase,setPhase]=useState<Phase>('idle')
   const [error,setError]=useState('')
@@ -17,12 +18,11 @@ export function WebSearch({onResults}:{onResults:(jobs:Job[])=>void}) {
     if(phase==='loading') return
     setPhase('loading')
     try {
-      const response=await integration.post<{results:SearchHit[]}>('exa/search',{
-        query:`Open university internship or new graduate job employer careers apply ${query.trim()}`,
-        numResults:12,contents:{text:{maxCharacters:2400}},
-      })
+      const terms=query.trim()
+      const response=await integration.post<{results:SearchHit[]}>('exa/search',buildJobSearch(terms,preferences))
       if(!response.success) throw Error(message(response))
-      const jobs=normalizeSearch(response.data?.results??[])
+      const hits=Array.isArray(response.data?.results)?response.data.results:[]
+      const jobs=normalizeSearch(hits,terms,preferences)
       onResults(jobs)
       setCount(jobs.length)
       setPhase(jobs.length?'success':'empty')
@@ -32,12 +32,12 @@ export function WebSearch({onResults}:{onResults:(jobs:Job[])=>void}) {
     }
   }
   return <form className="search-panel" onSubmit={search}>
-    <div><strong>Search the web with Exa</strong><p>Find more roles with source links. Searches use your DeepSpace credits.</p></div>
+    <div><strong>Search the web with Exa</strong><p>Search uses your selected filters and DeepSpace credits.</p></div>
     <label className="web-query"><span className="sr-only">Web search terms</span><input value={query} onChange={e=>setQuery(e.target.value)} maxLength={120} placeholder="e.g. data internships in Chicago"/></label>
     <button className="primary" disabled={phase==='loading'}>{phase==='loading'?'Searching…':phase==='error'?'Retry web search':'Search web'}</button>
     {phase==='error'&&<p className="feedback error" role="alert">{error} You can keep browsing the sample listings.</p>}
-    {phase==='empty'&&<p className="feedback" role="status">No recognizable early-career postings found. Try different search terms.</p>}
-    {phase==='success'&&<p className="feedback" role="status">{count} web results added below. Confirm availability at the source.</p>}
+    {phase==='empty'&&<p className="feedback" role="status">No suitable employer postings found. Try broader terms or filters. Sample listings are still available.</p>}
+    {phase==='success'&&<p className="feedback" role="status">{count} employer {count===1?'posting':'postings'} found. Your current filters may narrow what you see. Confirm details with the employer.</p>}
   </form>
 }
 
