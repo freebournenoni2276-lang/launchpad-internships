@@ -7,75 +7,24 @@
 
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
-import {
-  armCronRoom,
-  CanvasRoom,
-  CronRoom,
-  JobRoom,
-  PresenceRoom,
-  RecordRoom,
-  resolveAppRole,
-  workerErrorHandler,
-  YjsRoom,
-} from 'deepspace/worker'
-import type { DOBindings, DOManifest, Job, JobContext } from 'deepspace/worker'
-import { tasks as cronTasks, runTask as runCronTask } from './src/cron.js'
-import { runJob } from './src/jobs.js'
+import { RecordRoom, workerErrorHandler } from 'deepspace/worker'
+import type { DOBindings, DOManifest } from 'deepspace/worker'
 import { schemas } from './src/schemas.js'
-import { registerActionRoutes } from './src/server/action-routes.js'
 import {
   registerAuthAndIntegrationRoutes,
   registerPlatformProxyRoutes,
   registerStaticRoutes,
-  resolveAuth,
 } from './src/server/http-routes.js'
 import { registerRealtimeRoutes } from './src/server/realtime-routes.js'
 
 // Dynamic deploy reads this manifest to create the app's DO bindings.
 export const __DO_MANIFEST__ = [
   { binding: 'BOARD', className: 'Board', sqlite: true },
-  { binding: 'YJS_ROOMS', className: 'AppYjsRoom', sqlite: true },
-  { binding: 'CANVAS_ROOMS', className: 'AppCanvasRoom', sqlite: true },
-  { binding: 'PRESENCE_ROOMS', className: 'AppPresenceRoom', sqlite: true },
-  { binding: 'CRON_ROOMS', className: 'AppCronRoom', sqlite: true },
-  { binding: 'JOB_ROOMS', className: 'AppJobRoom', sqlite: true },
 ] as const satisfies DOManifest
 
 export class Board extends RecordRoom<Env> {
   constructor(state: DurableObjectState, env: Env) {
     super(state, env, schemas, { ownerUserId: env.OWNER_USER_ID })
-  }
-}
-
-export class AppYjsRoom extends YjsRoom<Env> {}
-export class AppCanvasRoom extends CanvasRoom<Env> {}
-export class AppPresenceRoom extends PresenceRoom<Env> {}
-
-/** Runs the scheduled tasks defined in src/cron.ts. */
-export class AppCronRoom extends CronRoom<Env> {
-  constructor(state: DurableObjectState, env: Env) {
-    super(state, env, { tasks: cronTasks })
-  }
-
-  protected async onTask(taskName: string): Promise<void> {
-    await runCronTask(taskName, this.env)
-  }
-}
-
-/** Runs durable background work defined in src/jobs.ts. */
-export class AppJobRoom extends JobRoom<Env> {
-  constructor(state: DurableObjectState, env: Env) {
-    super(state, env, {
-      authorizeWrite: async (user) => {
-        if (user.userId.startsWith('anon-')) return false
-        const role = await resolveAppRole({ ...env, RECORD_ROOMS: env.BOARD }, user.userId)
-        return role === 'member' || role === 'admin'
-      },
-    })
-  }
-
-  protected async onJob(job: Job, context: JobContext): Promise<unknown> {
-    return await runJob(job, context, this.env)
   }
 }
 
@@ -122,19 +71,8 @@ export type AppContext = { Bindings: Env }
 
 const app = new Hono<AppContext>()
 app.use('/api/*', cors())
-// A Durable Object exists only once something fetches it, and the CronRoom
-// arms its alarm in that first fetch — so wake it from the request path, or a
-// deployed schedule waits for a visitor. Once per isolate; no-op without tasks.
-app.use('*', async (c, next) => {
-  armCronRoom(c.executionCtx, c.env.CRON_ROOMS, `app:${c.env.DEEPSPACE_APP_ID}`, cronTasks)
-  await next()
-})
-
-// Registration order is part of the worker contract. The wildcard auth route
-// follows its special cases, AI precedes platform proxies, and static is last.
 registerAuthAndIntegrationRoutes(app)
 registerRealtimeRoutes(app)
-registerActionRoutes(app, resolveAuth)
 registerPlatformProxyRoutes(app)
 registerStaticRoutes(app)
 
