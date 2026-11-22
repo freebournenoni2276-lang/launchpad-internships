@@ -13,5 +13,5 @@ export const profilesSchema: CollectionSchema = {
 }
 export const applicationsSchema: CollectionSchema = {
   name:'student_applications', ownerField:'userId', uniqueOn:['userId','jobKey'], permissions:privateRecords,
-  columns:[owner,{...text('jobKey',700),immutable:true},text('listing',11000),text('status',30)],
+  columns:[owner,{...text('jobKey',700),immutable:true},text('listing',11000),text('status',30),{...text('legacyNote',2200),required:false}],
 }

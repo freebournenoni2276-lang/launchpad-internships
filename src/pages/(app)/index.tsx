@@ -2,7 +2,7 @@ import { useState, type FormEvent, type ReactNode } from 'react'
 import { AuthOverlay, signOut, useAuth, useMutations, useQuery } from 'deepspace'
 import { ArrowUpRight, Bookmark, Compass, Search, UserRound } from 'lucide-react'
 import { CalendarReminder, FitSummary, WebSearch } from '../../components/LaunchpadIntegrations'
-import { defaultProfile, profileSkills, readListing, safeUrl, sampleJobs, skills, sponsorships, statuses, years, type Application, type Job, type Profile } from '../../opportunities'
+import { defaultProfile, profileSkills, readListing, readPreviousTracker, safeUrl, sampleJobs, skills, sponsorships, statuses, years, type Application, type Job, type Profile } from '../../opportunities'
 import '../../launchpad.css'
 
 type View='Explore'|'My tracker'|'Profile'
@@ -93,6 +93,8 @@ export default function Launchpad() {
   const [pending,setPending]=useState<string[]>([])
   const [error,setError]=useState('')
   const [calendar,setCalendar]=useState('')
+  const [previous]=useState(readPreviousTracker)
+  const [importing,setImporting]=useState(false)
   const profiles=useQuery<Profile>('student_profiles',{limit:1})
   const applications=useQuery<Application>('student_applications',{limit:500,orderBy:'createdAt',orderDir:'desc'})
   const profileWrites=useMutations<Profile & {userId:string}>('student_profiles')
@@ -101,12 +103,13 @@ export default function Launchpad() {
   const profile=profileRecord?.data||defaultProfile
   const saved=isSignedIn?applications.records:[]
   const listings=[...web,...sampleJobs.filter(sample=>!web.some(job=>job.key===sample.key))]
-  const locationOptions=[...new Set(listings.map(job=>job.location))].sort()
+  const locationOptions=['Remote',...new Set([...locations,...listings.map(job=>job.location)].filter(value=>value!=='Remote'&&value!=='See posting'))].sort()
+  const importable=previous.filter(entry=>!saved.some(record=>record.data.jobKey===entry.jobKey))
   const normalized=query.trim().toLowerCase()
   const active=Boolean(normalized||levels.length||locations.length||sponsors.length||classes.length||selected.length)
   const shown=listings.filter(job=>
     (!normalized||[job.title,job.company,job.location,...job.skills].join(' ').toLowerCase().includes(normalized)) &&
-    (!levels.length||levels.includes(job.level)) && (!locations.length||locations.includes(job.location)) &&
+    (!levels.length||levels.includes(job.level)) && (!locations.length||locations.includes(job.location)||(locations.includes('Remote')&&/\bremote\b/i.test(job.location))) &&
     (!sponsors.length||sponsors.includes(job.sponsorship)) &&
     (!classes.length||(job.classifications.length?job.classifications.some(year=>classes.includes(year)):classes.includes('None'))) &&
     (!selected.length||(mode==='All selected skills'?selected.every(skill=>job.skills.includes(skill)):selected.some(skill=>job.skills.includes(skill))))
@@ -133,6 +136,18 @@ export default function Launchpad() {
     if(!userId) {setLogin(true);return}
     if(!applicationWrites.ready) return
     void write(job.key,()=>applicationWrites.createConfirmed({userId,jobKey:job.key,listing:JSON.stringify(job),status:'Interested'}))
+  }
+  async function importPrevious() {
+    if(!applicationWrites.ready||!userId||importing) return
+    setImporting(true)
+    setError('')
+    try {
+      for(const entry of new Map(importable.map(value=>[value.jobKey,value])).values()) {
+        await applicationWrites.createConfirmed({...entry,userId})
+      }
+    } catch(cause) {
+      setError(cause instanceof Error?cause.message:'Some saved roles could not be imported. Try again.')
+    } finally {setImporting(false)}
   }
   function reset() {setQuery('');setLevels([]);setLocations([]);setSponsors([]);setClasses([]);setSelected([]);setMode('Any selected skill')}
   const current=isSignedIn?view:'Explore'
@@ -178,6 +193,7 @@ export default function Launchpad() {
       </section>}
       {current==='My tracker'&&<section className="inner"><div className="section-head"><div><h2>My tracker</h2><p>Follow your applications from first interest through the final decision.</p></div><Choices label="Application status" options={statuses} values={stage} onChange={setStage}/></div>
         {error&&<p role="alert" className="error">{error}</p>}
+        {applications.status==='ready'&&importable.length>0&&<div className="import-panel"><p>Import roles saved in this browser into this account.</p><button className="primary" disabled={importing||!applicationWrites.ready} onClick={()=>void importPrevious()}>{importing?'Importing…':'Import previous tracker'}</button></div>}
         {applications.status!=='ready'&&!saved.length?<p role="status">{applications.status==='error'?'Tracker could not load. Try reloading.':'Loading your tracker…'}</p>:null}
         {applications.status==='ready'&&!tracked.length&&<div className="empty">{stage.length?'No saved roles match the selected statuses.':'Save an opportunity from Explore to start tracking.'}</div>}
         <div className="cards tracker">{tracked.map(record=>{
@@ -189,7 +205,7 @@ export default function Launchpad() {
               const status=e.target.value as Application['status']
               void write(record.recordId,()=>applicationWrites.putConfirmed(record.recordId,{status}))
             }}>{statuses.map(status=><option key={status}>{status}</option>)}</select>
-          </JobCard><div className="tracker-actions"><button className="quiet" aria-expanded={calendar===record.recordId} onClick={()=>setCalendar(calendar===record.recordId?'':record.recordId)}>Calendar reminder</button>
+          </JobCard>{record.data.legacyNote&&<p className="legacy-note">{record.data.legacyNote}</p>}<div className="tracker-actions"><button className="quiet" aria-expanded={calendar===record.recordId} onClick={()=>setCalendar(calendar===record.recordId?'':record.recordId)}>Calendar reminder</button>
             <button className="quiet" disabled={busy} aria-label={`Remove ${job.title}`} onClick={()=>{if(confirm(`Remove ${job.title} from your tracker?`))void write(record.recordId,()=>applicationWrites.removeConfirmed(record.recordId))}}>Remove</button></div>
             {calendar===record.recordId&&<CalendarReminder job={job}/>}</div>
         })}</div>

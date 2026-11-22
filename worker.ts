@@ -33,7 +33,7 @@ import { registerRealtimeRoutes } from './src/server/realtime-routes.js'
 
 // Dynamic deploy reads this manifest to create the app's DO bindings.
 export const __DO_MANIFEST__ = [
-  { binding: 'RECORD_ROOMS', className: 'Board', sqlite: true },
+  { binding: 'BOARD', className: 'Board', sqlite: true },
   { binding: 'YJS_ROOMS', className: 'AppYjsRoom', sqlite: true },
   { binding: 'CANVAS_ROOMS', className: 'AppCanvasRoom', sqlite: true },
   { binding: 'PRESENCE_ROOMS', className: 'AppPresenceRoom', sqlite: true },
@@ -68,7 +68,7 @@ export class AppJobRoom extends JobRoom<Env> {
     super(state, env, {
       authorizeWrite: async (user) => {
         if (user.userId.startsWith('anon-')) return false
-        const role = await resolveAppRole(env, user.userId)
+        const role = await resolveAppRole({ ...env, RECORD_ROOMS: env.BOARD }, user.userId)
         return role === 'member' || role === 'admin'
       },
     })
@@ -80,6 +80,7 @@ export class AppJobRoom extends JobRoom<Env> {
 }
 
 export interface Env extends DOBindings<typeof __DO_MANIFEST__> {
+  RECORD_ROOMS: DurableObjectNamespace
   ASSETS: Fetcher
   /**
    * Platform service binding in production; deepspace dev supplies the URL
@@ -145,4 +146,8 @@ registerStaticRoutes(app)
 // answer, and returns a generic 500 for the rest.
 app.onError(workerErrorHandler('error'))
 
-export default app
+export default {
+  fetch(request: Request, bindings: Omit<Env, 'RECORD_ROOMS'>, ctx: ExecutionContext) {
+    return app.fetch(request, { ...bindings, RECORD_ROOMS: bindings.BOARD }, ctx)
+  },
+}
