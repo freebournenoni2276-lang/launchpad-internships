@@ -4,7 +4,7 @@ Launchpad helps college students and recent graduates find internships and entry
 
 Built on the [DeepSpace SDK](https://deep.space/).
 
-**Live app:** [Launchpad on DeepSpace staging](https://launchpad-internships.spacestest.com)
+**Live app:** [Launchpad](https://launchpad-internships.app.space/)
 
 ## What it does
 
