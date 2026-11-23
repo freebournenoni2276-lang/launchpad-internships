@@ -13,3 +13,23 @@ src/router.ts
 src/modals.tsx
 .claude/launch.json
 .claude/worktrees
+
+# Environment overrides and credentials
+.env
+.env.*
+!.env.example
+.deepspace-session*
+deepspace.session*
+*.pem
+*.key
+*.p12
+*.pfx
+.npmrc
+.npmrc.local
+
+# Generated outputs
+coverage/
+.vite/
+*.tsbuildinfo
+*.log
+.DS_Store

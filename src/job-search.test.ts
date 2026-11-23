@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildJobSearch, matchesLocation, normalizeSearch, postingKey, type SearchPreferences } from './job-search'
+import { buildJobSearch, matchesLocation, normalizeSearch, postingKey, searchPreferences, type SearchPreferences } from './job-search'
 
 const preferences:SearchPreferences={skills:[],levels:[],locations:[],sponsorship:[],matchAll:false}
 const baseUrl='https://jobs.ashbyhq.com/acme/a11ce'
@@ -15,6 +15,16 @@ describe('job search',()=>{
     expect(body.query).toContain('Chicago or Remote')
     expect(body.query).toContain('explicitly offer work visa sponsorship')
     expect(body.numResults).toBeLessThanOrEqual(12)
+  })
+
+  it('uses profile defaults while preserving explicit browse filters',()=>{
+    const profile={year:'Recent graduate',location:'Seattle',sponsorship:'Need sponsorship',skills:'["Python"]'}
+    const defaults=searchPreferences(preferences,profile)
+    expect(defaults).toMatchObject({profileYear:'Recent graduate',skills:['Python'],locations:['Seattle'],sponsorship:['Available']})
+    expect(buildJobSearch('software developer',defaults).query).toContain('prefer entry-level or new graduate roles')
+    const overrides=searchPreferences({...preferences,skills:['SQL'],levels:['Internship'],locations:['Remote'],sponsorship:['Unclear']},profile)
+    expect(overrides).toMatchObject({skills:['SQL'],levels:['Internship'],locations:['Remote'],sponsorship:['Unclear']})
+    expect(overrides.profileYear).toBeUndefined()
   })
 
   it('deduplicates tracked application URLs, removes editorial and foreign results, and keeps posting evidence',()=>{

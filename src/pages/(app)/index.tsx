@@ -1,7 +1,7 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { AuthOverlay, signOut, useAuth, useMutations, useQuery } from 'deepspace'
 import { ArrowUpRight, Bookmark, Compass, Search, UserRound } from 'lucide-react'
-import { matchesLocation, postingKey } from '../../job-search'
+import { matchesLocation, postingKey, searchPreferences } from '../../job-search'
 import { CalendarReminder, FitSummary, WebSearch } from '../../components/LaunchpadIntegrations'
 import { defaultProfile, profileSkills, readListing, readPreviousTracker, safeUrl, sampleJobs, skills, sponsorships, statuses, years, type Application, type Job, type Profile } from '../../opportunities'
 import '../../launchpad.css'
@@ -111,10 +111,7 @@ export default function Launchpad() {
   const saved=isSignedIn?applications.records:[]
   const webKeys=new Set(web.map(job=>postingKey(job.url)))
   const listings=[...web,...sampleJobs.filter(sample=>!webKeys.has(postingKey(sample.url)))]
-  const preferences={skills:selected,matchAll:mode==='All selected skills',levels,
-    locations:locations.length?locations:profile.location!=='Any'&&profile.location.trim()?[profile.location.trim()]:[],
-    sponsorship:sponsors.length?sponsors:profile.sponsorship==='Need sponsorship'?['Available']:[],
-  }
+  const preferences=searchPreferences({skills:selected,matchAll:mode==='All selected skills',levels,locations,sponsorship:sponsors},profile)
   const locationOptions=['Remote',...new Set([...locations,...listings.map(job=>job.location)].filter(value=>value!=='Remote'&&value!=='See posting'))].sort()
   const importable=previous.filter(entry=>!saved.some(record=>record.data.jobKey===entry.jobKey))
   const normalized=query.trim().toLowerCase()

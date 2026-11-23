@@ -1,4 +1,4 @@
-import { safeUrl, skills, years, type Job } from './opportunities'
+import { profileSkills, safeUrl, skills, years, type Job, type Profile } from './opportunities'
 
 export type SearchPreferences = {
   skills: string[]
@@ -6,6 +6,17 @@ export type SearchPreferences = {
   levels: string[]
   locations: string[]
   sponsorship: string[]
+  profileYear?: string
+}
+
+export function searchPreferences(filters: SearchPreferences, profile: Profile): SearchPreferences {
+  return {
+    ...filters,
+    skills: filters.skills.length ? filters.skills : profileSkills(profile),
+    locations: filters.locations.length ? filters.locations : profile.location !== 'Any' && profile.location.trim() ? [profile.location.trim()] : [],
+    sponsorship: filters.sponsorship.length ? filters.sponsorship : profile.sponsorship === 'Need sponsorship' ? ['Available'] : [],
+    profileYear: !filters.levels.length && years.includes(profile.year) ? profile.year : undefined,
+  }
 }
 
 export function buildJobSearch(terms: string, preferences: SearchPreferences) {
@@ -14,7 +25,10 @@ export function buildJobSearch(terms: string, preferences: SearchPreferences) {
   const clauses = [
     'Official employer job posting with application link',
     terms.trim() || 'early-career opportunity',
-    level.length ? 'level: ' + level.join(' or ') : !terms.trim() ? 'internship or entry-level' : '',
+    level.length ? 'level: ' + level.join(' or ') :
+      preferences.profileYear === 'Recent graduate' ? 'prefer entry-level or new graduate roles' :
+      preferences.profileYear ? `prefer internships suitable for ${preferences.profileYear.toLowerCase()} students` :
+      !terms.trim() ? 'internship or entry-level' : '',
     preferences.skills.length ? `skills (${preferences.matchAll ? 'all' : 'any'}): ${preferences.skills.join(', ')}` : '',
     preferences.locations.length ? 'job location: ' + preferences.locations.join(' or ') : '',
     sponsorshipRequested ? 'prefer postings that explicitly offer work visa sponsorship' :
@@ -190,7 +204,9 @@ export function normalizeSearch(hits: SearchHit[], terms: string, preferences: S
     const sponsorship = classifySponsorship(description)
     if (wantsSponsorship && sponsorship.sponsorshipNote?.includes('restriction')) continue
     const hitsOnSkills = requested.filter(value => mentioned.includes(value)).length
-    const score = (knownATS ? 2 : 0) + (locationMatch || regionMatch ? 3 : 0) +
+    const fitsProfile = preferences.profileYear === 'Recent graduate' ? level === 'New graduate' :
+      Boolean(preferences.profileYear && (classifications.includes(preferences.profileYear) || level === 'Internship'))
+    const score = (fitsProfile ? 2 : 0) + (knownATS ? 2 : 0) + (locationMatch || regionMatch ? 3 : 0) +
       (requestedYear && title.includes(requestedYear) ? 3 : 0) + hitsOnSkills * 2 +
       (preferences.matchAll && requested.length && hitsOnSkills === requested.length ? 4 : 0) +
       (wantsSponsorship ? sponsorship.sponsorship === 'Available' ? 8 : 0 : 0)
